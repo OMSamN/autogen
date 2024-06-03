@@ -116,7 +116,34 @@ From {agentNames.First()}:
         var conv = this.ProcessConversationsForRolePlay(this.initializeMessages, conversationHistory);
 
         var messages = new IMessage[] { systemMessage }.Concat(conv);
-        var response = await this.admin.GenerateReplyAsync(
+
+        var remainingAttempts = 3;
+        do
+        {
+            try
+            {
+                var nextSpeaker = await TryRolePlayNextAgentAsync(admin, this.agents, messages);
+                if (nextSpeaker != null)
+                {
+                    return nextSpeaker;
+                }
+            }
+            catch (InvalidOperationException) when (remainingAttempts > 1)
+            {
+                //Try again
+            }
+        } while (--remainingAttempts > 0);
+
+        throw new Exception("No name is returned.");
+    }
+
+    private static async Task<IAgent?> TryRolePlayNextAgentAsync(
+        IAgent admin,
+        IEnumerable<IAgent> availableAgents,
+        IEnumerable<IMessage> messages
+    )
+    {
+        var response = await admin.GenerateReplyAsync(
             messages: messages,
             options: new GenerateReplyOptions
             {
@@ -126,13 +153,17 @@ From {agentNames.First()}:
                 Functions = [],
             });
 
-        string name = response?.GetContent() ?? throw new Exception("No name is returned.");
 
-        // remove From
-        name = name.Substring(5);
-        return this.agents.FirstOrDefault(x =>
+        // remove From:
+        string? name = response?.GetContent()?.Substring(5);
+        if (name == null)
+        {
+            return null;
+        }
+
+        return availableAgents.FirstOrDefault(x =>
                 x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase)
-            ) ?? throw new Exception($"No member of the chat named {name}.");
+            ) ?? throw new InvalidOperationException($"No member of the chat named {name}.");
     }
 
     /// <inheritdoc />

@@ -134,7 +134,7 @@ public class OpenAIChatAgent : IStreamingAgent
 
         var openAIFunctionDefinitions = options?.Functions?.Select(f => f.ToOpenAIFunctionDefinition());
         var functions = openAIFunctionDefinitions ?? _functions;
-        if (functions is not null && functions.Count() > 0)
+        if (functions is not null && functions.Any())
         {
             foreach (var f in functions)
             {

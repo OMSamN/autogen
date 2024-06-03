@@ -313,7 +313,7 @@ Here's some external information:
     }
 
     /// <summary>
-    /// A mathmatical operation that returns the sum of two numbers.
+    /// A mathematical operation that returns the sum of two numbers.
     /// </summary>
     /// <param name="x">The first number to sum.</param>
     /// <param name="y">The second number to sum.</param>
