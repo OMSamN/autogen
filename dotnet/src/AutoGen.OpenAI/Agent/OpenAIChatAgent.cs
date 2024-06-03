@@ -107,11 +107,16 @@ public class OpenAIChatAgent : IStreamingAgent
 
     private ChatCompletionsOptions CreateChatCompletionsOptions(GenerateReplyOptions? options, IEnumerable<IMessage> messages)
     {
-        var oaiMessages = messages.Select(m => m switch
-        {
-            IMessage<ChatRequestMessage> chatRequestMessage => chatRequestMessage.Content,
-            _ => throw new ArgumentException("Invalid message type")
-        });
+        var oaiMessages = messages
+            .Select(m =>
+                m switch
+                {
+                    IMessage<ChatRequestMessage> chatRequestMessage => chatRequestMessage.Content,
+                    ToolCallMessage toolCallMessage => null,
+                    _ => throw new ArgumentException("Invalid message type")
+                }
+            )
+            .Where(x => x != null);
 
         // add system message if there's no system message in messages
         if (!oaiMessages.Any(m => m is ChatRequestSystemMessage))

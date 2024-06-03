@@ -126,11 +126,13 @@ From {agentNames.First()}:
                 Functions = [],
             });
 
-        var name = response?.GetContent() ?? throw new Exception("No name is returned.");
+        string name = response?.GetContent() ?? throw new Exception("No name is returned.");
 
         // remove From
-        name = name!.Substring(5);
-        return this.agents.First(x => x.Name!.ToLower() == name.ToLower());
+        name = name.Substring(5);
+        return this.agents.FirstOrDefault(x =>
+                x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase)
+            ) ?? throw new Exception($"No member of the chat named {name}.");
     }
 
     /// <inheritdoc />
