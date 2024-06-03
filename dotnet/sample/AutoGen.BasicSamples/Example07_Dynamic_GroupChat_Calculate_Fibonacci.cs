@@ -138,10 +138,9 @@ public partial class Example07_Dynamic_GroupChat_Calculate_Fibonacci
             name: "code_reviewer",
             systemMessage: @"You review code block from coder",
             config: gpt3Config,
-            functions: [functions.ReviewCodeBlockFunction],
-            functionMap: new Dictionary<string, Func<string, Task<string>>>()
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>()
             {
-                { nameof(ReviewCodeBlock), functions.ReviewCodeBlockWrapper },
+                { functions.ReviewCodeBlockFunctionContract, functions.ReviewCodeBlockWrapper },
             })
             .RegisterMiddleware(async (msgs, option, innerAgent, ct) =>
             {
@@ -224,7 +223,9 @@ public partial class Example07_Dynamic_GroupChat_Calculate_Fibonacci
         long the39thFibonacciNumber = 63245986;
         var workDir = Path.Combine(Path.GetTempPath(), "InteractiveService");
         if (!Directory.Exists(workDir))
+        {
             Directory.CreateDirectory(workDir);
+        }
 
         using var service = new InteractiveService(workDir);
         var dotnetInteractiveFunctions = new DotnetInteractiveFunction(service);
@@ -328,7 +329,9 @@ public partial class Example07_Dynamic_GroupChat_Calculate_Fibonacci
         long the39thFibonacciNumber = 63245986;
         var workDir = Path.Combine(Path.GetTempPath(), "InteractiveService");
         if (!Directory.Exists(workDir))
+        {
             Directory.CreateDirectory(workDir);
+        }
 
         using var service = new InteractiveService(workDir);
         var dotnetInteractiveFunctions = new DotnetInteractiveFunction(service);

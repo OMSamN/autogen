@@ -11,8 +11,6 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 {
     public async Task RunAsync()
     {
-        var instance = new Example04_Dynamic_GroupChat_Coding_Task();
-
         // setup dotnet interactive
         var workDir = Path.Combine(Path.GetTempPath(), "InteractiveService");
         if (!Directory.Exists(workDir))
@@ -95,12 +93,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
             Your reply must contain one of [task|ask|summary] to indicate the type of your message.
             """,
-            llmConfig: new ConversableAgentConfig
-            {
-                Temperature = 0,
-                ConfigList = [_llmConfig],
-                FunctionContracts = new[] { AddFunctionContract },
-            }
+            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [_llmConfig], }
         ).RegisterPrintMessage();
 
         // create coder agent
@@ -132,10 +125,9 @@ Here's some external information:
 ",
             config: _llmConfig,
             temperature: 0.4f,
-            functions: new Azure.AI.OpenAI.FunctionDefinition[] { this.AddFunction },
-            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                { this.AddFunction.Name, this.AddWrapper }
+                { this.AddFunctionContract, this.AddWrapper }
             }
         ).RegisterPrintMessage();
 

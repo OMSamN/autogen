@@ -18,6 +18,7 @@ namespace AutoGen.Tests
     public partial class SingleAgentTest
     {
         private ITestOutputHelper _output;
+
         public SingleAgentTest(ITestOutputHelper output)
         {
             _output = output;
@@ -63,11 +64,11 @@ namespace AutoGen.Tests
                 systemMessage: "You are a helpful AI assistant, return highest label from conversation",
                 config: gpt3Config,
                 temperature: 0,
-                functions: new[] { this.GetHighestLabelFunction },
-                functionMap: new Dictionary<string, Func<string, Task<string>>>
+                functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
                 {
-                    { nameof(GetHighestLabel), this.GetHighestLabelWrapper },
-                });
+                    { this.GetHighestLabelFunctionContract, this.GetHighestLabelWrapper },
+                }
+            );
 
             var imageUri = new Uri(@"https://microsoft.github.io/autogen/assets/images/level2algebra-659ba95286432d9945fc89e84d606797.png");
             var oaiMessage = new ChatRequestUserMessage(
@@ -115,7 +116,16 @@ namespace AutoGen.Tests
         public async Task GPTFunctionCallAgentTestAsync()
         {
             var config = this.CreateAzureOpenAIGPT35TurboConfig();
-            var agentWithFunction = new GPTAgent("gpt", "You are a helpful AI assistant", config, 0, functions: new[] { this.EchoAsyncFunction });
+            var agentWithFunction = new GPTAgent(
+                "gpt",
+                "You are a helpful AI assistant",
+                config,
+                0,
+                functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
+                {
+                    { this.EchoAsyncFunctionContract, this.EchoAsyncWrapper },
+                }
+            );
 
             await EchoFunctionCallTestAsync(agentWithFunction);
         }
@@ -128,19 +138,17 @@ namespace AutoGen.Tests
             var llmConfig = new ConversableAgentConfig
             {
                 Temperature = 0,
-                FunctionContracts = new[]
-                {
-                    this.EchoAsyncFunctionContract,
-                },
-                ConfigList = new[]
-                {
-                    config,
-                },
+                ConfigList = new[] { config, },
             };
 
             var assistantAgent = new AssistantAgent(
                 name: "assistant",
-                llmConfig: llmConfig);
+                llmConfig: llmConfig,
+                functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
+                {
+                    { this.EchoAsyncFunctionContract, this.EchoAsyncWrapper },
+                }
+            );
 
             await EchoFunctionCallTestAsync(assistantAgent);
         }
@@ -181,7 +189,6 @@ namespace AutoGen.Tests
             await this.UpperCaseTestAsync(assistantAgent);
         }
 
-
         [Fact]
         public async Task AssistantAgentDefaultReplyTestAsync()
         {
@@ -203,10 +210,6 @@ namespace AutoGen.Tests
             var config = this.CreateAzureOpenAIGPT35TurboConfig();
             var llmConfig = new ConversableAgentConfig
             {
-                FunctionContracts = new[]
-                {
-                    this.EchoAsyncFunctionContract,
-                },
                 ConfigList = new[]
                 {
                     config,
@@ -215,10 +218,11 @@ namespace AutoGen.Tests
             var assistantAgent = new AssistantAgent(
                 name: "assistant",
                 llmConfig: llmConfig,
-                functionMap: new Dictionary<string, Func<string, Task<string>>>
+                functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
                 {
-                    { nameof(EchoAsync), this.EchoAsyncWrapper },
-                });
+                    { this.EchoAsyncFunctionContract, this.EchoAsyncWrapper },
+                }
+            );
 
             await EchoFunctionCallExecutionTestAsync(assistantAgent);
         }
@@ -232,11 +236,11 @@ namespace AutoGen.Tests
                 systemMessage: "You are a helpful AI assistant",
                 config: config,
                 temperature: 0,
-                functions: new[] { this.EchoAsyncFunction },
-                functionMap: new Dictionary<string, Func<string, Task<string>>>
+                functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
                 {
-                    { nameof(EchoAsync), this.EchoAsyncWrapper },
-                });
+                    { this.EchoAsyncFunctionContract, this.EchoAsyncWrapper },
+                }
+            );
 
             await EchoFunctionCallExecutionStreamingTestAsync(agent);
             await EchoFunctionCallExecutionTestAsync(agent);

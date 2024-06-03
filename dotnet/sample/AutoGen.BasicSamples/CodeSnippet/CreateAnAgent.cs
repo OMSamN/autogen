@@ -25,7 +25,6 @@ public partial class AssistantCodeSnippet
                 ConfigList = new[] { llmConfig },
             });
         #endregion code_snippet_1
-
     }
 
     public void CodeSnippet2()
@@ -87,10 +86,10 @@ public partial class AssistantCodeSnippet
                 {
                     llmConfig
                 },
-                FunctionContracts = new[]
-                {
-                    this.UpperCaseFunctionContract, // The FunctionDefinition object for the UpperCase function
-                },
+            },
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
+            {
+                { this.UpperCaseFunctionContract, this.UpperCaseWrapper },
             });
 
         var response = await assistantAgent.SendAsync("hello");
@@ -122,14 +121,10 @@ public partial class AssistantCodeSnippet
                 {
                     llmConfig
                 },
-                FunctionContracts = new[]
-                {
-                    this.UpperCaseFunctionContract, // The FunctionDefinition object for the UpperCase function
-                },
             },
-            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                { this.UpperCaseFunction.Name, this.UpperCaseWrapper }, // The wrapper function for the UpperCase function
+                { this.UpperCaseFunctionContract, this.UpperCaseWrapper }, // The wrapper function for the UpperCase function
             });
 
         var response = await assistantAgent.SendAsync("hello");

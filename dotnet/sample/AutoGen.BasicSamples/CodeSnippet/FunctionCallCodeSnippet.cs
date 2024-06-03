@@ -30,10 +30,10 @@ public partial class FunctionCallCodeSnippet
                 {
                     llmConfig
                 },
-                FunctionContracts = new[]
-                {
-                    function.WeatherReportFunctionContract,
-                },
+            },
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
+            {
+                { function.WeatherReportFunctionContract, function.WeatherReportWrapper },
             });
 
         var response = await assistantAgent.SendAsync("hello What's the weather in Seattle today? today is 2024-01-01");
@@ -44,7 +44,6 @@ public partial class FunctionCallCodeSnippet
         toolCallMessage.ToolCalls[0].FunctionArguments.Should().Be(@"{""location"":""Seattle"",""date"":""2024-01-01""}");
         #endregion code_snippet_4
     }
-
 
     public async Task CodeSnippet6()
     {
@@ -67,14 +66,10 @@ public partial class FunctionCallCodeSnippet
                 {
                     llmConfig
                 },
-                FunctionContracts = new[]
-                {
-                    function.WeatherReportFunctionContract,
-                },
             },
-            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                { function.WeatherReportFunctionContract.Name, function.WeatherReportWrapper }, // The function wrapper for the weather report function
+                { function.WeatherReportFunctionContract, function.WeatherReportWrapper }, // The function wrapper for the weather report function
             });
 
         #endregion code_snippet_6
@@ -130,17 +125,17 @@ public partial class FunctionCallCodeSnippet
             llmConfig: new ConversableAgentConfig
             {
                 ConfigList = new[] { config },
-                FunctionContracts = new[]
-                {
-                    function.WeatherReportFunctionContract,
-                },
+            },
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
+            {
+                { function.WeatherReportFunctionContract, function.WeatherReportWrapper },
             });
 
         var user = new UserProxyAgent(
             name: "user",
-            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                { function.WeatherReportFunctionContract.Name, function.WeatherReportWrapper },
+                { function.WeatherReportFunctionContract, function.WeatherReportWrapper },
             });
 
         await user.InitiateChatAsync(assistant, "what's weather in Seattle today, today is 2024-01-01", 10);

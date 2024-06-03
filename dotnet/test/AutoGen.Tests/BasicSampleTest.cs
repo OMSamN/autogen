@@ -52,7 +52,8 @@ namespace AutoGen.Tests
         [ApiKeyFact("OPENAI_API_KEY")]
         public async Task DynamicGroupChatGetMLNetPRTestAsync()
         {
-            await Example04_Dynamic_GroupChat_Coding_Task.RunAsync();
+            var instance = new Example04_Dynamic_GroupChat_Coding_Task();
+            await instance.RunAsync();
         }
 
         [ApiKeyFact("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT")]
@@ -77,6 +78,7 @@ namespace AutoGen.Tests
         public class ConsoleWriter : StringWriter
         {
             private ITestOutputHelper output;
+
             public ConsoleWriter(ITestOutputHelper output)
             {
                 this.output = output;

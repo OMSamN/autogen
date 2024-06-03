@@ -14,6 +14,7 @@ namespace AutoGen.Tests;
 public partial class TwoAgentTest
 {
     private ITestOutputHelper _output;
+
     public TwoAgentTest(ITestOutputHelper output)
     {
         _output = output;
@@ -35,13 +36,10 @@ public partial class TwoAgentTest
 
         var assistant = new AssistantAgent(
             "assistant",
-            llmConfig: new ConversableAgentConfig
+            llmConfig: new ConversableAgentConfig { ConfigList = new[] { config }, },
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                ConfigList = new[] { config },
-                FunctionContracts = new[]
-                {
-                    this.GetWeatherFunctionContract,
-                },
+                { this.GetWeatherFunctionContract, this.GetWeatherWrapper },
             })
             .RegisterMiddleware(async (msgs, option, agent, ct) =>
             {
@@ -54,9 +52,9 @@ public partial class TwoAgentTest
 
         var user = new UserProxyAgent(
             name: "user",
-            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
-                { this.GetWeatherFunction.Name, this.GetWeatherWrapper },
+                { this.GetWeatherFunctionContract, this.GetWeatherWrapper },
             })
             .RegisterMiddleware(async (msgs, option, agent, ct) =>
             {

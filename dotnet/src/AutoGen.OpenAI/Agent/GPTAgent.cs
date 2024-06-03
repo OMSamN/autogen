@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AutoGen.OpenAI.Extension;
@@ -13,17 +14,17 @@ namespace AutoGen.OpenAI;
 /// <summary>
 /// GPT agent that can be used to connect to OpenAI chat models like GPT-3.5, GPT-4, etc.
 /// <para><see cref="GPTAgent" /> supports the following message types as input:</para>
-/// <para>- <see cref="TextMessage"/></para> 
-/// <para>- <see cref="ImageMessage"/></para> 
+/// <para>- <see cref="TextMessage"/></para>
+/// <para>- <see cref="ImageMessage"/></para>
 /// <para>- <see cref="MultiModalMessage"/></para>
 /// <para>- <see cref="ToolCallMessage"/></para>
 /// <para>- <see cref="ToolCallResultMessage"/></para>
 /// <para>- <see cref="Message"/></para>
 /// <para>- <see cref="IMessage{ChatRequestMessage}"/> where T is <see cref="ChatRequestMessage"/></para>
 /// <para>- <see cref="AggregateMessage{TMessage1, TMessage2}"/> where TMessage1 is <see cref="ToolCallMessage"/> and TMessage2 is <see cref="ToolCallResultMessage"/></para>
-/// 
+///
 /// <para><see cref="GPTAgent" /> returns the following message types:</para>
-/// <para>- <see cref="TextMessage"/></para> 
+/// <para>- <see cref="TextMessage"/></para>
 /// <para>- <see cref="ToolCallMessage"/></para>
 /// <para>- <see cref="AggregateMessage{TMessage1, TMessage2}"/> where TMessage1 is <see cref="ToolCallMessage"/> and TMessage2 is <see cref="ToolCallResultMessage"/></para>
 /// </summary>
@@ -40,8 +41,7 @@ public class GPTAgent : IStreamingAgent
         int maxTokens = 1024,
         int? seed = null,
         ChatCompletionsResponseFormat? responseFormat = null,
-        IEnumerable<FunctionDefinition>? functions = null,
-        IDictionary<string, Func<string, Task<string>>>? functionMap = null)
+        IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null)
     {
         openAIClient = config switch
         {
@@ -57,12 +57,13 @@ public class GPTAgent : IStreamingAgent
             _ => throw new ArgumentException($"Unsupported config type {config.GetType()}"),
         };
 
-        _innerAgent = new OpenAIChatAgent(openAIClient, name, modelName, systemMessage, temperature, maxTokens, seed, responseFormat, functions)
+        _innerAgent = new OpenAIChatAgent(openAIClient, name, modelName, systemMessage, temperature, maxTokens, seed, responseFormat, functionMap?.Keys.Select(x => x.ToOpenAIFunctionDefinition()))
             .RegisterMessageConnector();
 
         if (functionMap is not null)
         {
-            var functionMapMiddleware = new FunctionCallMiddleware(functionMap: functionMap);
+            var innerFunctionsMap = functionMap.ToDictionary(x => x.Key.Name!, x => x.Value);
+            var functionMapMiddleware = new FunctionCallMiddleware(functions: functionMap?.Keys, functionMap: innerFunctionsMap);
             _innerAgent = _innerAgent.RegisterStreamingMiddleware(functionMapMiddleware);
         }
 
@@ -78,18 +79,18 @@ public class GPTAgent : IStreamingAgent
         int maxTokens = 1024,
         int? seed = null,
         ChatCompletionsResponseFormat? responseFormat = null,
-        IEnumerable<FunctionDefinition>? functions = null,
-        IDictionary<string, Func<string, Task<string>>>? functionMap = null)
+        IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null)
     {
         this.openAIClient = openAIClient;
         Name = name;
 
-        _innerAgent = new OpenAIChatAgent(openAIClient, name, modelName, systemMessage, temperature, maxTokens, seed, responseFormat, functions)
+        _innerAgent = new OpenAIChatAgent(openAIClient, name, modelName, systemMessage, temperature, maxTokens, seed, responseFormat, functionMap?.Keys.Select(x => x.ToOpenAIFunctionDefinition()))
             .RegisterMessageConnector();
 
         if (functionMap is not null)
         {
-            var functionMapMiddleware = new FunctionCallMiddleware(functionMap: functionMap);
+            var innerFunctionsMap = functionMap.ToDictionary(x => x.Key.Name!, x => x.Value);
+            var functionMapMiddleware = new FunctionCallMiddleware(functions: functionMap?.Keys, functionMap: innerFunctionsMap);
             _innerAgent = _innerAgent.RegisterStreamingMiddleware(functionMapMiddleware);
         }
     }

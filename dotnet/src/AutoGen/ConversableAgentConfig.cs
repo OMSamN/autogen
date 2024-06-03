@@ -7,8 +7,6 @@ namespace AutoGen;
 
 public class ConversableAgentConfig
 {
-    public IEnumerable<FunctionContract>? FunctionContracts { get; set; }
-
     public IEnumerable<ILLMConfig>? ConfigList { get; set; }
 
     public float? Temperature { get; set; } = 0.7f;

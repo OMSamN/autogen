@@ -45,11 +45,12 @@ public class ConversableAgent : IAgent
         string? defaultAutoReply = null,
         HumanInputMode humanInputMode = HumanInputMode.NEVER,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
-        IDictionary<string, Func<string, Task<string>>>? functionMap = null)
+        IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null)
     {
         this.Name = name;
         this.defaultReply = defaultAutoReply;
-        this.functionMap = functionMap;
+        this.functionMap = functionMap?.ToDictionary(x => x.Key.Name!, x => x.Value);
+        this.functions = functionMap?.Keys;
         this.humanInputMode = humanInputMode;
         this.innerAgent = innerAgent;
         this.IsTermination = isTermination;
@@ -62,17 +63,18 @@ public class ConversableAgent : IAgent
         ConversableAgentConfig? llmConfig = null,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
         HumanInputMode humanInputMode = HumanInputMode.AUTO,
-        IDictionary<string, Func<string, Task<string>>>? functionMap = null,
-        string? defaultReply = null)
+        IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null,
+        string? defaultReply = null
+    )
     {
         this.Name = name;
         this.defaultReply = defaultReply;
-        this.functionMap = functionMap;
+        this.functionMap = functionMap?.ToDictionary(x => x.Key.Name!, x => x.Value);
+        this.functions = functionMap?.Keys;
         this.humanInputMode = humanInputMode;
         this.IsTermination = isTermination;
         this.systemMessage = systemMessage;
         this.innerAgent = llmConfig?.ConfigList != null ? this.CreateInnerAgentFromConfigList(llmConfig) : null;
-        this.functions = llmConfig?.FunctionContracts;
     }
 
     /// <summary>

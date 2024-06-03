@@ -28,8 +28,7 @@ public class LMStudioAgent : IAgent
         string systemMessage = "You are a helpful AI assistant",
         float temperature = 0.7f,
         int maxTokens = 1024,
-        IEnumerable<FunctionDefinition>? functions = null,
-        IDictionary<string, Func<string, Task<string>>>? functionMap = null)
+        IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null)
     {
         var client = ConfigOpenAIClientForLMStudio(config);
         innerAgent = new GPTAgent(
@@ -39,7 +38,6 @@ public class LMStudioAgent : IAgent
             modelName: "llm", // model name doesn't matter for LM Studio
             temperature: temperature,
             maxTokens: maxTokens,
-            functions: functions,
             functionMap: functionMap);
     }
 

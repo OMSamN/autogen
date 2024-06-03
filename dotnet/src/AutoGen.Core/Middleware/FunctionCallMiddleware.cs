@@ -39,7 +39,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         string? name = null)
     {
         this.Name = name ?? nameof(FunctionCallMiddleware);
-        this.functions = functions;
+        this.functions = functions?.ToArray();
         this.functionMap = functionMap;
     }
 
@@ -146,20 +146,20 @@ public class FunctionCallMiddleware : IStreamingMiddleware
 
     private async Task<IMessage> InvokeToolCallMessagesAfterInvokingAgentAsync(ToolCallMessage toolCallMsg, IAgent agent)
     {
-        var toolCallsReply = toolCallMsg.ToolCalls;
         var toolCallResult = new List<ToolCall>();
+        var toolCallsReply = toolCallMsg.ToolCalls;
         foreach (var toolCall in toolCallsReply)
         {
-            var fName = toolCall.FunctionName;
-            var fArgs = toolCall.FunctionArguments;
-            if (this.functionMap?.TryGetValue(fName, out var func) is true)
+            var functionName = toolCall.FunctionName;
+            var functionArguments = toolCall.FunctionArguments;
+            if (this.functionMap?.TryGetValue(functionName, out var func) is true)
             {
-                var result = await func(fArgs);
-                toolCallResult.Add(new ToolCall(fName, fArgs, result) { ToolCallId = toolCall.ToolCallId });
+                var result = await func(functionArguments);
+                toolCallResult.Add(new ToolCall(functionName, functionArguments, result) { ToolCallId = toolCall.ToolCallId });
             }
         }
 
-        if (toolCallResult.Count() > 0)
+        if (toolCallResult.Count > 0)
         {
             var toolCallResultMessage = new ToolCallResultMessage(toolCallResult, from: agent.Name);
             return new ToolCallAggregateMessage(toolCallMsg, toolCallResultMessage, from: agent.Name);

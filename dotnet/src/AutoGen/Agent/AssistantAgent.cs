@@ -16,7 +16,7 @@ public class AssistantAgent : ConversableAgent
             ConversableAgentConfig? llmConfig = null,
             Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
             HumanInputMode humanInputMode = HumanInputMode.NEVER,
-            IDictionary<string, Func<string, Task<string>>>? functionMap = null,
+            IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null,
             string? defaultReply = null)
         : base(name: name,
          systemMessage: systemMessage,
