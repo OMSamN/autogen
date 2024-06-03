@@ -1,5 +1,5 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-// ChatResponseUpdate.cs
+// Message.cs
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
@@ -23,6 +23,7 @@ public class Message
     /// </summary>
     [JsonPropertyName("role")]
     public string Role { get; set; } = string.Empty;
+
     /// <summary>
     /// the content of the message
     /// </summary>

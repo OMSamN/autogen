@@ -1,5 +1,5 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
-// FunctionContract.cs
+// SourceGeneratorFunctionContract.cs
 
 namespace AutoGen.SourceGenerator
 {
@@ -35,6 +35,5 @@ namespace AutoGen.SourceGenerator
         public bool IsOptional { get; set; }
 
         public string? DefaultValue { get; set; }
-
     }
 }
