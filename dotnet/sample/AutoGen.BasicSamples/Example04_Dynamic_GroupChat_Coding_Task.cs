@@ -99,6 +99,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             {
                 Temperature = 0,
                 ConfigList = [_llmConfig],
+                FunctionContracts = new[] { AddFunctionContract },
             }
         ).RegisterPrintMessage();
 
@@ -130,7 +131,12 @@ Here's some external information:
 - The link to mlnet repo is: https://github.com/dotnet/machinelearning. you don't need a token to use GitHub PR API. Make sure to include a User-Agent header, otherwise GitHub will reject it.
 ",
             config: _llmConfig,
-            temperature: 0.4f
+            temperature: 0.4f,
+            functions: new Azure.AI.OpenAI.FunctionDefinition[] { this.AddFunction },
+            functionMap: new Dictionary<string, Func<string, Task<string>>>
+            {
+                { this.AddFunction.Name, this.AddWrapper }
+            }
         ).RegisterPrintMessage();
 
         // code reviewer agent will review if code block from coder's reply satisfy the following conditions:
@@ -273,7 +279,14 @@ Here's some external information:
         );
         var groupChatManager = new GroupChatManager(groupChat);
 
-        // task 1: retrieve the most recent pr from mlnet and save it in result.txt
+        // task 1: Add 5 and 7
+        var conversationHistory = await userProxy.InitiateChatAsync(
+            groupChatManager,
+            $"What's 5 + 7 =",
+            maxRound: 10
+        );
+
+        // task 2: retrieve the most recent pr from mlnet and save it in result.txt
         conversationHistory = await userProxy.SendAsync(
             groupChatManager,
             $"Retrieve the most recent PR from mlnet and save it in {result.Name}",
@@ -283,7 +296,7 @@ Here's some external information:
         result.Refresh();
         result.Exists.Should().BeTrue();
 
-        // task 2: calculate the 39th fibonacci number
+        // task 3: calculate the 39th fibonacci number
         var answer = 63245986;
         // clear the result file
         result.Delete();
@@ -298,4 +311,13 @@ Here's some external information:
         var resultContent = File.ReadAllText(result.FullName);
         resultContent.Should().Contain(answer.ToString());
     }
+
+    /// <summary>
+    /// A mathmatical operation that returns the sum of two numbers.
+    /// </summary>
+    /// <param name="x">The first number to sum.</param>
+    /// <param name="y">The second number to sum.</param>
+    /// <returns>A string representation of the sum of <paramref name="x"/> and <paramref name="y"/>.</returns>
+    [Function]
+    public Task<string> Add(float x, float y) => Task.FromResult((x + y).ToString());
 }
