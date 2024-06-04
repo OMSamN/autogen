@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 
@@ -52,6 +53,7 @@ public class Graph
 /// <summary>
 /// Represents a transition between two agents.
 /// </summary>
+[DebuggerDisplay("{_from.Name} -> {_to.Name}")]
 public class Transition
 {
     private readonly IAgent _from;

@@ -63,7 +63,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         // if the reply is a function call message plus the function's name is available in function map, invoke the function and return the result instead of sending to the agent.
         if (reply is ToolCallMessage toolCallMsg)
         {
-            return await this.InvokeToolCallMessagesAfterInvokingAgentAsync(toolCallMsg, agent);
+            return await this.InvokeToolCallMessagesAfterInvokingAgentAsync(toolCallMsg, agent, context.Messages, cancellationToken);
         }
 
         // for all other messages, just return the reply from the agent.
@@ -112,7 +112,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
 
         if (initMessage is ToolCallMessage toolCallMsg)
         {
-            yield return await this.InvokeToolCallMessagesAfterInvokingAgentAsync(toolCallMsg, agent);
+            yield return await this.InvokeToolCallMessagesAfterInvokingAgentAsync(toolCallMsg, agent, context.Messages, cancellationToken);
         }
     }
 
@@ -144,7 +144,11 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         return new ToolCallResultMessage(toolCallResult, from: agent.Name);
     }
 
-    private async Task<IMessage> InvokeToolCallMessagesAfterInvokingAgentAsync(ToolCallMessage toolCallMsg, IAgent agent)
+    private async Task<IMessage> InvokeToolCallMessagesAfterInvokingAgentAsync(
+        ToolCallMessage toolCallMsg,
+        IAgent agent,
+        IEnumerable<IMessage> messages,
+        CancellationToken cancellationToken)
     {
         var toolCallResult = new List<ToolCall>();
         var toolCallsReply = toolCallMsg.ToolCalls;
@@ -154,8 +158,39 @@ public class FunctionCallMiddleware : IStreamingMiddleware
             var functionArguments = toolCall.FunctionArguments;
             if (this.functionMap?.TryGetValue(functionName, out var func) is true)
             {
-                var result = await func(functionArguments);
-                toolCallResult.Add(new ToolCall(functionName, functionArguments, result) { ToolCallId = toolCall.ToolCallId });
+                try
+                {
+                    var result = await func(functionArguments);
+                    toolCallResult.Add(new ToolCall(functionName, functionArguments, result) { ToolCallId = toolCall.ToolCallId });
+                }
+                catch (Exception ex)
+                {
+                    var originalContent = toolCallMsg.GetContent();
+                    var prompt =
+                        $@"{string.Join(
+                            Environment.NewLine,
+                            [
+                                $"Your attempt to call function {functionName}({functionArguments}) failed:",
+                                ex.ToString(),
+                                "Please ensure the the arguments you pass are valid."
+                            ]
+                        )}
+
+## Original Content
+{originalContent}";
+
+                    return await agent.SendAsync(prompt, messages, cancellationToken);
+                }
+            }
+            else if (this.functionMap is not null)
+            {
+                var originalContent = toolCallMsg.GetContent();
+                var errorMessage =
+                    $"Function {functionName} is not available. Available functions are: {string.Join(", ", this.functionMap.Select(f => f.Key))}";
+                var prompt = $@"{errorMessage}
+## Original Content
+{originalContent}";
+                return await agent.SendAsync(prompt, messages, cancellationToken);
             }
         }
 

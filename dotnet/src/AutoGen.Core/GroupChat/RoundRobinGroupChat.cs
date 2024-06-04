@@ -55,12 +55,20 @@ public class RoundRobinGroupChat : IGroupChat
             conversationHistory.AddRange(conversationWithName);
         }
 
-        var lastSpeaker = conversationHistory.LastOrDefault()?.From switch
+        var lastSpeakerName = conversationHistory.Last()?.From;
+        var groupChatManagers = this.agents.OfType<GroupChatManager>();
+        var lastSpeaker = lastSpeakerName switch
         {
             null => this.agents.First(),
-            _ => this.agents.FirstOrDefault(x => x.Name == conversationHistory.Last().From) ?? throw new Exception("The agent is not in the group chat"),
+            _
+                => this.agents.Except(groupChatManagers)
+                    .Where(x => x.Name == lastSpeakerName)
+                    .DefaultIfEmpty(groupChatManagers.FirstOrDefault())
+                    .FirstOrDefault()
+                    ?? throw new Exception($"The agent '{lastSpeakerName}' is not in the group chat"),
         };
-        var round = 0;
+
+        int round = 0;
         while (round < maxRound)
         {
             var currentSpeaker = this.SelectNextSpeaker(lastSpeaker);

@@ -2,6 +2,7 @@
 // AgentExtension.cs
 
 using System.Text;
+
 namespace AutoGen.DotnetInteractive;
 
 public static class AgentExtension
@@ -38,7 +39,7 @@ public static class AgentExtension
 
             // retrieve all code blocks from last message
             var codeBlocks = lastMessage.GetContent()!.Split(new[] { codeBlockPrefix }, StringSplitOptions.RemoveEmptyEntries);
-            if (codeBlocks.Length <= 0)
+            if (codeBlocks.Length <= 0 || codeBlocks.First().IndexOf(codeBlockSuffix) == -1)
             {
                 return await innerAgent.GenerateReplyAsync(msgs, option, ct);
             }
@@ -72,12 +73,10 @@ public static class AgentExtension
                     result.AppendLine("### End of executing result ###");
                 }
             }
-            if (result.Length <= maximumOutputToKeep)
-            {
-                maximumOutputToKeep = result.Length;
-            }
 
-            return new TextMessage(Role.Assistant, result.ToString().Substring(0, maximumOutputToKeep), from: agent.Name);
+            var maximumOutputToReturn = result.Length <= maximumOutputToKeep ? result.Length : maximumOutputToKeep;
+
+            return new TextMessage(Role.Assistant, result.ToString().Substring(0, maximumOutputToReturn), from: agent.Name);
         });
     }
 }

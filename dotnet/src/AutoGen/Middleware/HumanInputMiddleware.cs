@@ -23,12 +23,14 @@ public class HumanInputMiddleware : IMiddleware
     public string? Name => nameof(HumanInputMiddleware);
 
     public HumanInputMiddleware(
-        string prompt = "Please give feedback: Press enter or type 'exit' to stop the conversation.",
+        string prompt =
+            "Please give feedback: Press enter or type 'exit' to stop the conversation.",
         string exitKeyword = "exit",
         HumanInputMode mode = HumanInputMode.AUTO,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
         Func<string>? getInput = null,
-        Action<string>? writeLine = null)
+        Action<string>? writeLine = null
+    )
     {
         this.prompt = prompt;
         this.isTermination = isTermination ?? DefaultIsTermination;
@@ -40,44 +42,22 @@ public class HumanInputMiddleware : IMiddleware
 
     public async Task<IMessage> InvokeAsync(MiddlewareContext context, IAgent agent, CancellationToken cancellationToken = default)
     {
-        // if the mode is never, then just return the input message
-        if (mode == HumanInputMode.NEVER)
+        // if the mode is never, or auto, but message was a termination message, then just return the input message
+        if (mode == HumanInputMode.NEVER
+            || mode == HumanInputMode.AUTO && await isTermination(context.Messages, cancellationToken) is true)
         {
             return await agent.GenerateReplyAsync(context.Messages, context.Options, cancellationToken);
         }
 
-        // if the mode is always, then prompt the user for input
-        if (mode == HumanInputMode.ALWAYS)
+        // if the mode is always, or auto but message was not a termination message, then prompt the user for input
+        this.writeLine(context.Messages?.Last().FormatMessage() ?? prompt);
+        var input = getInput();
+        if (input == exitKeyword)
         {
-            this.writeLine(prompt);
-            var input = getInput();
-            if (input == exitKeyword)
-            {
-                return new TextMessage(Role.Assistant, GroupChatExtension.TERMINATE, agent.Name);
-            }
-
-            return new TextMessage(Role.Assistant, input, agent.Name);
+            return new TextMessage(Role.Assistant, GroupChatExtension.TERMINATE, agent.Name);
         }
 
-        // if the mode is auto, then prompt the user for input if the message is not a termination message
-        if (mode == HumanInputMode.AUTO)
-        {
-            if (await isTermination(context.Messages, cancellationToken) is false)
-            {
-                return await agent.GenerateReplyAsync(context.Messages, context.Options, cancellationToken);
-            }
-
-            this.writeLine(prompt);
-            var input = getInput();
-            if (input == exitKeyword)
-            {
-                return new TextMessage(Role.Assistant, GroupChatExtension.TERMINATE, agent.Name);
-            }
-
-            return new TextMessage(Role.Assistant, input, agent.Name);
-        }
-
-        throw new InvalidOperationException("Invalid mode");
+        return new TextMessage(Role.Assistant, input, agent.Name);
     }
 
     private async Task<bool> DefaultIsTermination(IEnumerable<IMessage> messages, CancellationToken _)

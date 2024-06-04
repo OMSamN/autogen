@@ -25,6 +25,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>AutoGen.Tests, PublicKey=$(PublicKey)</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="ImageResources\square.png">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>

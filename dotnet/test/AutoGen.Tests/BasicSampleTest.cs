@@ -52,7 +52,8 @@ namespace AutoGen.Tests
         [ApiKeyFact("OPENAI_API_KEY")]
         public async Task DynamicGroupChatGetMLNetPRTestAsync()
         {
-            var instance = new Example04_Dynamic_GroupChat_Coding_Task();
+            var gptConfig = LLMConfiguration.GetAzureOpenAIGPT3_5_Turbo();
+            var instance = new Example04_Dynamic_GroupChat_Coding_Task(gptConfig);
             await instance.RunAsync();
         }
 

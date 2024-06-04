@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -81,19 +82,19 @@ public class GroupChat : IGroupChat
     /// <param name="currentSpeaker">current speaker</param>
     /// <param name="conversationHistory">conversation history</param>
     /// <returns>next speaker.</returns>
-    public async Task<IAgent> SelectNextSpeakerAsync(IAgent currentSpeaker, IEnumerable<IMessage> conversationHistory)
+    public async Task<IAgent?> SelectNextSpeakerAsync(IAgent currentSpeaker, IEnumerable<IMessage> conversationHistory)
     {
         var agentNames = this.agents.Select(x => x.Name).ToList();
         if (this.workflow != null)
         {
             var nextAvailableAgents = await this.workflow.TransitToNextAvailableAgentsAsync(currentSpeaker, conversationHistory);
             agentNames = nextAvailableAgents.Select(x => x.Name).ToList();
-            if (agentNames.Count() == 0)
+            if (agentNames.Count == 0)
             {
                 throw new Exception("No next available agents found in the current workflow");
             }
 
-            if (agentNames.Count() == 1)
+            if (agentNames.Count == 1)
             {
                 return this.agents.FirstOrDefault(x => x.Name == agentNames.First());
             }
@@ -111,7 +112,11 @@ The available roles are:
 
 Each message will start with 'From name:', e.g:
 From {agentNames.First()}:
-//your message//.");
+//your message//.
+
+Your response should similarly identify the the next role to speak, and what they say next.
+
+If the role play scenario is complete, your reply should include the text: {GroupChatExtension.TERMINATE}.");
 
         var conv = this.ProcessConversationsForRolePlay(this.initializeMessages, conversationHistory);
 
@@ -128,13 +133,17 @@ From {agentNames.First()}:
                     return nextSpeaker;
                 }
             }
+            catch (EndOfStreamException)
+            {
+                return null;
+            }
             catch (InvalidOperationException) when (remainingAttempts > 1)
             {
                 //Try again
             }
         } while (--remainingAttempts > 0);
 
-        throw new Exception("No name is returned.");
+        return null;
     }
 
     private static async Task<IAgent?> TryRolePlayNextAgentAsync(
@@ -153,6 +162,10 @@ From {agentNames.First()}:
                 Functions = [],
             });
 
+        if (response?.IsGroupChatTerminateMessage() ?? false)
+        {
+            throw new EndOfStreamException();
+        }
 
         // remove From:
         string? name = response?.GetContent()?.Substring(5);
@@ -183,17 +196,52 @@ From {agentNames.First()}:
             conversationHistory.AddRange(conversationWithName);
         }
 
-        var lastSpeaker = conversationHistory.LastOrDefault()?.From switch
+        var lastSpeakerName = conversationHistory.Last()?.From;
+        var lastSpeaker = lastSpeakerName switch
         {
             null => this.agents.First(),
-            _ => this.agents.FirstOrDefault(x => x.Name == conversationHistory.Last().From) ?? throw new Exception("The agent is not in the group chat"),
+            _ => this.agents.FirstOrDefault(x => x.Name == lastSpeakerName) ?? throw new Exception($"The agent '{lastSpeakerName}' is not in the group chat"),
         };
-        var round = 0;
+
+        int round = 0;
         while (round < maxRound)
         {
-            var currentSpeaker = await this.SelectNextSpeakerAsync(lastSpeaker, conversationHistory);
-            var processedConversation = this.ProcessConversationForAgent(this.initializeMessages, conversationHistory);
-            var result = await currentSpeaker.GenerateReplyAsync(processedConversation) ?? throw new Exception("No result is returned.");
+            IMessage? result = null;
+            try
+            {
+                var currentSpeaker = await this.SelectNextSpeakerAsync(lastSpeaker, conversationHistory);
+                if (currentSpeaker == null)
+                {
+                    // if no next speaker was identified, terminate the conversation
+                    break;
+                }
+
+                var processedConversation = this.ProcessConversationForAgent(this.initializeMessages, conversationHistory);
+
+                var remainingRequestFailedExceptions = 3;
+                do
+                {
+                    try
+                    {
+                        result = await currentSpeaker.GenerateReplyAsync(processedConversation, cancellationToken: ct);
+                    }
+                    catch (Exception ex)
+                        when (ex.GetType().FullName == "Azure.RequestFailedException" && --remainingRequestFailedExceptions > 0)
+                    {
+                        //Try again
+                    }
+                } while (result == null);
+
+                lastSpeaker = currentSpeaker;
+            }
+            catch (Exception ex)
+            {
+                result = new TextMessage(
+                    Role.Assistant,
+                    $"{ex}{Environment.NewLine}{Environment.NewLine}{GroupChatExtension.TERMINATE}",
+                    from: this.admin?.Name);
+            }
+
             conversationHistory.Add(result);
 
             // if message is terminate message, then terminate the conversation
@@ -202,7 +250,6 @@ From {agentNames.First()}:
                 break;
             }
 
-            lastSpeaker = currentSpeaker;
             round++;
         }
 
