@@ -39,7 +39,7 @@ public static class AgentExtension
 
             // retrieve all code blocks from last message
             var codeBlocks = lastMessage.GetContent()!.Split(new[] { codeBlockPrefix }, StringSplitOptions.RemoveEmptyEntries);
-            if (codeBlocks.Length <= 0 || codeBlocks.First().IndexOf(codeBlockSuffix) == -1)
+            if (codeBlocks.Length <= 0 || codeBlocks.All(x => x.IndexOf(codeBlockSuffix) == -1))
             {
                 return await innerAgent.GenerateReplyAsync(msgs, option, ct);
             }

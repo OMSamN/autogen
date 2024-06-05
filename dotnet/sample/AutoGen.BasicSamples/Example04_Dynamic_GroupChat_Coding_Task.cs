@@ -37,11 +37,15 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
         await service.StartAsync(workDir, default);
 
+        var writeConversationToConsole = true;
         var userProxy = new UserProxyAgent(
             name: "user",
             defaultReply: GroupChatExtension.TERMINATE,
-            humanInputMode: HumanInputMode.AUTO
-        ).RegisterPrintMessage();
+            humanInputMode: HumanInputMode.AUTO,
+            determinePrompt: (IEnumerable<IMessage> messages) =>
+                writeConversationToConsole
+                    ? "Please give feedback: Press enter or type 'exit' to stop the conversation."
+                    : $"{messages?.Last().FormatMessage()}{Environment.NewLine}Please give feedback: Press enter or type 'exit' to stop the conversation.");
 
         GroupChatManager? groupChatManager = null;
 
@@ -49,62 +53,62 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             name: "groupAdmin",
             systemMessage: "You are group admin, terminate the group chat once task is completed by saying [TERMINATE] plus the final answer",
             temperature: 0f,
-            config: _llmConfig
-        )
+            config: _llmConfig)
             .RegisterMiddleware(
                 async (msgs, option, agent, ct) =>
                 {
                     var reply = await agent.GenerateReplyAsync(msgs, option, ct);
                     if (
                         reply is TextMessage textMessage
-                        && textMessage.Content.Contains("TERMINATE") is true
-                    )
+                        && textMessage.Content.Contains("TERMINATE") is true)
                     {
                         var userResponse = await userProxy.SendAsync(
                             $"{userProxy.Name} please type 'exit' if you are satisfied with the answer.",
-                            msgs
-                        );
+                            msgs,
+                            writeConversationToConsole,
+                            ct);
                         if (!userResponse.IsGroupChatTerminateMessage() && groupChatManager != null)
                         {
                             msgs = await groupChatManager.SendAsync(
                                 userProxy,
                                 chatHistory: msgs.Concat([userResponse]),
-                                maxRound: 11
-                            );
+                                maxRound: 11,
+                                writeConversationToConsole: writeConversationToConsole);
                         }
 
                         return new TextMessage(
                             Role.Assistant,
                             $"{textMessage.Content}{Environment.NewLine}{Environment.NewLine}{GroupChatExtension.TERMINATE}",
-                            from: reply.From
-                        );
+                            from: reply.From);
                     }
 
                     return reply;
-                }
-            )
-            .RegisterPrintMessage();
+                });
 
         var coder = CreateCoderAgentAsync();
         var runner = CreateRunnerAgentAsync(service, coder);
 
-        groupChatManager = SetupWorkflowAndGroupChat(groupAdmin, userProxy, coder, runner);
+        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, groupAdmin, userProxy, coder, runner);
 
         // task 1: Add 5 and 7
         IEnumerable<IMessage>? conversationHistory = null;
         conversationHistory = await userProxy.InitiateChatAsync(
             groupChatManager,
             $"What's 5 + 7 =",
-            maxRound: 11
-        );
+            maxRound: 11,
+            writeConversationToConsole: writeConversationToConsole);
+        if (!conversationHistory.Last().IsGroupChatTerminateMessage())
+        {
+            conversationHistory = await SeekUserInputToRetry(userProxy, groupChatManager, conversationHistory, writeConversationToConsole);
+        }
         conversationHistory.Last().IsGroupChatTerminateMessage().Should().BeTrue();
 
         // task 2: retrieve the most recent PR from mlnet and save it in result.txt
         conversationHistory = await userProxy.InitiateChatAsync(
             groupChatManager,
             $"Retrieve the most recent PR from mlnet and save it in {result.Name}",
-            maxRound: 30
-        );
+            maxRound: 30,
+            writeConversationToConsole: writeConversationToConsole);
 
         await RetryIfFileDoesNotExist(
             result,
@@ -112,8 +116,8 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             groupChatManager,
             $"I couldn't find {result.Name}.  Did {runner.Name} execute the code successfully?",
             conversationHistory,
-            remainingRetries: 3
-        );
+            writeConversationToConsole,
+            remainingRetries: 3);
         result.Exists.Should().BeTrue();
 
         // clear the result file
@@ -125,7 +129,8 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         conversationHistory = await userProxy.InitiateChatAsync(
             groupChatManager,
             $"What's the 39th of fibonacci number? Save the result in {result.Name}",
-            maxRound: 10
+            maxRound: 10,
+            writeConversationToConsole: writeConversationToConsole
         );
         await RetryIfFileDoesNotExist(
             result,
@@ -133,6 +138,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             groupChatManager,
             $"I couldn't find {result.Name}.  Did {runner.Name} execute the code successfully?",
             conversationHistory,
+            writeConversationToConsole,
             remainingRetries: 3
         );
         result.Exists.Should().BeTrue();
@@ -144,14 +150,39 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         result.Delete();
     }
 
+    private static async Task<IEnumerable<IMessage>> SeekUserInputToRetry(
+        IAgent userProxy,
+        GroupChatManager? groupChatManager,
+        IEnumerable<IMessage> conversationHistory,
+        bool writeConversationToConsole)
+    {
+        var userResponse = await userProxy.SendAsync(
+            $"{userProxy.Name} please type 'exit' if you are satisfied with the answer.",
+            conversationHistory,
+            writeConversationToConsole);
+
+        conversationHistory = conversationHistory.Concat([userResponse]);
+
+        if (!userResponse.IsGroupChatTerminateMessage() && groupChatManager != null)
+        {
+            conversationHistory = await groupChatManager.SendAsync(
+                userProxy,
+                chatHistory: conversationHistory,
+                maxRound: 11,
+                writeConversationToConsole: writeConversationToConsole);
+        }
+
+        return conversationHistory;
+    }
+
     private static async Task RetryIfFileDoesNotExist(
         FileInfo result,
         IAgent userProxy,
         GroupChatManager? groupChatManager,
         string messageToGroupChat,
         IEnumerable<IMessage> conversationHistory,
-        int remainingRetries = 3
-    )
+        bool writeConversationToConsole,
+        int remainingRetries = 3)
     {
         do
         {
@@ -161,20 +192,20 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
                 conversationHistory = await userProxy.SendAsync(
                     groupChatManager,
                     messageToGroupChat,
+                    chatHistory: conversationHistory,
                     maxRound: 30,
-                    chatHistory: conversationHistory
-                );
+                    writeConversationToConsole: writeConversationToConsole);
                 result.Refresh();
             }
         } while (!result.Exists && --remainingRetries > 0);
     }
 
     private GroupChatManager SetupWorkflowAndGroupChat(
+        bool writeConversationToConsole,
         IAgent groupAdmin,
         IAgent user,
         IAgent coder,
-        IAgent runner
-    )
+        IAgent runner)
     {
         var admin = CreateAdminAsync();
         var reviewApprovedMessage =
@@ -313,8 +344,8 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         var groupChat = new GroupChat(
             admin: groupAdmin,
             members: [admin, coder, runner, reviewer, user],
-            workflow: workflow
-        );
+            workflow: workflow,
+            writeConversationToConsole: writeConversationToConsole);
         admin.SendIntroduction("Welcome to my group. Work together to resolve my task.", groupChat);
         coder.SendIntroduction("I will write C# code to resolve the task.", groupChat);
         reviewer.SendIntroduction("I will review C# code.", groupChat);
@@ -323,13 +354,13 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         return new GroupChatManager(groupChat);
     }
 
-    private MiddlewareAgent<AssistantAgent> CreateAdminAsync()
+    private IAgent CreateAdminAsync()
     {
         // Create admin agent
         return new AssistantAgent(
             name: "admin",
             systemMessage: """
-            You are a manager who takes coding problems from user and resolves the problems by splitting them into small tasks and assigning each task to the coder.
+            You are a manager who takes coding problems from user and resolves the problems by splitting them into small tasks and assigning each task to the coder, who works in C#.
 
             The workflow is as follows:
             - You take the coding problem from user
@@ -373,11 +404,10 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
             Your reply must contain one of [task|ask|summary] to indicate the type of your message.
             """,
-            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [_llmConfig], }
-        ).RegisterPrintMessage();
+            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [_llmConfig], });
     }
 
-    private MiddlewareAgent<GPTAgent> CreateCoderAgentAsync()
+    private IAgent CreateCoderAgentAsync()
     {
         // create coder agent
         // The coder agent is a composite agent that contains dotnet coder, code reviewer and NuGet agent.
@@ -412,14 +442,10 @@ Here's some external information:
             functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
                 { this.AddFunctionContract, this.AddWrapper }
-            }
-        ).RegisterPrintMessage();
+            });
     }
 
-    private static MiddlewareAgent<IAgent> CreateRunnerAgentAsync(
-        InteractiveService service,
-        IAgent coder
-    )
+    private static IAgent CreateRunnerAgentAsync(InteractiveService service, IAgent coder)
     {
         // create runner agent
         // The runner agent will run the code block from coder's reply.
@@ -447,15 +473,12 @@ Here's some external information:
                         return await agent.GenerateReplyAsync([coderMsg], option, ct);
                     }
                 },
-                middlewareName: "Identify code to execute"
-            )
-            .RegisterPrintMessage();
+                middlewareName: "Identify code to execute");
     }
 
-    private MiddlewareAgent<GPTAgent> CreateReviewerAgentAsync(
+    private IAgent CreateReviewerAgentAsync(
         string approvedMessage = "The code looks good, please ask runner to run the code for you.",
-        string rejectedMessage = "There are some code review comments, please fix these:"
-    )
+        string rejectedMessage = "There are some code review comments, please fix these:")
     {
         // code reviewer agent will review if code block from coder's reply satisfy the following conditions:
         // - There's only one code block
@@ -499,98 +522,78 @@ Here's some external information:
             functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>()
             {
                 { this.ReviewCodeBlockFunctionContract, this.ReviewCodeBlockWrapper },
-            }
-        )
-            .RegisterMiddleware(
-                async (msgs, option, innerAgent, ct) =>
+            })
+            .RegisterMiddleware(async (msgs, option, innerAgent, ct) =>
+            {
+                var maxRetry = 3;
+                var reply = await innerAgent.GenerateReplyAsync(msgs, option, ct);
+                while (maxRetry-- > 0)
                 {
-                    var maxRetry = 3;
-                    var reply = await innerAgent.GenerateReplyAsync(msgs, option, ct);
-                    while (maxRetry-- > 0)
+                    if (reply.GetToolCalls() is var toolCalls && toolCalls.Count == 1 && toolCalls[0].FunctionName == nameof(ReviewCodeBlock))
                     {
-                        if (
-                            reply.GetToolCalls() is IList<ToolCall> toolCalls
-                            && toolCalls.Count == 1
-                            && toolCalls[0].FunctionName == nameof(ReviewCodeBlock)
-                        )
+                        var toolCallResult = reply.GetContent();
+                        var reviewResultObj = System.Text.Json.JsonSerializer.Deserialize<CodeReviewResult>(toolCallResult);
+                        var reviews = new List<string>();
+                        if (reviewResultObj.HasMultipleCodeBlocks)
                         {
-                            var toolCallResult = reply.GetContent();
-                            var reviewResultObj =
-                                System.Text.Json.JsonSerializer.Deserialize<CodeReviewResult>(
-                                    toolCallResult
-                                );
-                            var reviews = new List<string>();
-                            if (reviewResultObj.HasMultipleCodeBlocks)
+                            var fixCodeBlockPrompt = @"There're multiple code blocks, please combine them into one code block.";
+                            reviews.Add(fixCodeBlockPrompt);
+                        }
+
+                        if (reviewResultObj.IsDotnetCodeBlock is false)
+                        {
+                            var fixCodeBlockPrompt = @"The code block is not a csharp code block, please write C# code only.";
+                            reviews.Add(fixCodeBlockPrompt);
+                        }
+
+                        if (reviewResultObj.IsTopLevelStatement is false)
+                        {
+                            var fixCodeBlockPrompt = @"The code is not using top-level statements, please rewrite your C# code using top-level statements.";
+                            reviews.Add(fixCodeBlockPrompt);
+                        }
+
+                        if (reviewResultObj.IsPrintResultToConsole is false)
+                        {
+                            var fixCodeBlockPrompt = @"The code doesn't write anything to the console, please print the output to console.";
+                            reviews.Add(fixCodeBlockPrompt);
+                        }
+
+                        if (reviews.Count > 0)
+                        {
+                            var sb = new StringBuilder();
+                            sb.AppendLine(rejectedMessage);
+                            foreach (var review in reviews)
                             {
-                                var fixCodeBlockPrompt =
-                                    @"There're multiple code blocks, please combine them into one code block.";
-                                reviews.Add(fixCodeBlockPrompt);
+                                sb.AppendLine($"- {review}");
                             }
 
-                            if (reviewResultObj.IsDotnetCodeBlock is false)
-                            {
-                                var fixCodeBlockPrompt =
-                                    @"The code block is not a csharp code block, please write C# code only.";
-                                reviews.Add(fixCodeBlockPrompt);
-                            }
-
-                            if (reviewResultObj.IsTopLevelStatement is false)
-                            {
-                                var fixCodeBlockPrompt =
-                                    @"The code is not using top-level statements, please rewrite your C# code using top-level statements.";
-                                reviews.Add(fixCodeBlockPrompt);
-                            }
-
-                            if (reviewResultObj.IsPrintResultToConsole is false)
-                            {
-                                var fixCodeBlockPrompt =
-                                    @"The code doesn't write anything to the console, please print the output to console.";
-                                reviews.Add(fixCodeBlockPrompt);
-                            }
-
-                            if (reviews.Count > 0)
-                            {
-                                var sb = new StringBuilder();
-                                sb.AppendLine(rejectedMessage);
-                                foreach (var review in reviews)
-                                {
-                                    sb.AppendLine($"- {review}");
-                                }
-
-                                return new TextMessage(
-                                    Role.Assistant,
-                                    sb.ToString(),
-                                    from: innerAgent.Name
-                                );
-                            }
-                            else
-                            {
-                                var msg = new TextMessage(Role.Assistant, approvedMessage)
-                                {
-                                    From = innerAgent.Name,
-                                };
-
-                                return msg;
-                            }
+                            return new TextMessage(Role.Assistant, sb.ToString(), from: innerAgent.Name);
                         }
                         else
                         {
-                            var originalContent = reply.GetContent();
-                            var prompt =
-                                $@"Please convert the content to {nameof(ReviewCodeBlock)} function arguments.
+                            var msg = new TextMessage(Role.Assistant, approvedMessage)
+                            {
+                                From = innerAgent.Name,
+                            };
 
-        ## Original Content
-        {originalContent}";
-
-                            reply = await innerAgent.SendAsync(prompt, msgs, ct);
+                            return msg;
                         }
                     }
+                    else
+                    {
+                        var originalContent = reply.GetContent();
+                        var prompt = $@"Please convert the content to {nameof(ReviewCodeBlock)} function arguments.
 
-                    throw new Exception("Failed to review code block");
-                },
-                middlewareName: "Summarise code review feedback"
-            )
-            .RegisterPrintMessage();
+## Original Content
+{originalContent}";
+
+                        reply = await innerAgent.SendAsync(prompt, msgs, ct: ct);
+                    }
+                }
+
+                throw new Exception("Failed to review code block");
+            },
+            middlewareName: "Summarise code review feedback");
     }
 
     /// <summary>

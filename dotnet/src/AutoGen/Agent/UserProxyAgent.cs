@@ -16,6 +16,7 @@ public class UserProxyAgent : ConversableAgent
         ConversableAgentConfig? llmConfig = null,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
         HumanInputMode humanInputMode = HumanInputMode.ALWAYS,
+        Func<IEnumerable<IMessage>, string>? determinePrompt = null,
         IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null,
         string? defaultReply = null)
         : base(name: name,
@@ -23,6 +24,7 @@ public class UserProxyAgent : ConversableAgent
               llmConfig: llmConfig,
               isTermination: isTermination,
               humanInputMode: humanInputMode,
+              determineHumanInputPrompt: determinePrompt,
               functionMap: functionMap,
               defaultReply: defaultReply)
     {

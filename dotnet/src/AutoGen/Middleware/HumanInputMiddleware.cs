@@ -15,7 +15,7 @@ namespace AutoGen;
 public class HumanInputMiddleware : IMiddleware
 {
     private readonly HumanInputMode mode;
-    private readonly string prompt;
+    private readonly Func<IEnumerable<IMessage>, string> determinePrompt;
     private readonly string exitKeyword;
     private Func<IEnumerable<IMessage>, CancellationToken, Task<bool>> isTermination;
     private Func<string> getInput = Console.ReadLine;
@@ -23,8 +23,7 @@ public class HumanInputMiddleware : IMiddleware
     public string? Name => nameof(HumanInputMiddleware);
 
     public HumanInputMiddleware(
-        string prompt =
-            "Please give feedback: Press enter or type 'exit' to stop the conversation.",
+        Func<IEnumerable<IMessage>, string>? determinePrompt = null,
         string exitKeyword = "exit",
         HumanInputMode mode = HumanInputMode.AUTO,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
@@ -32,7 +31,8 @@ public class HumanInputMiddleware : IMiddleware
         Action<string>? writeLine = null
     )
     {
-        this.prompt = prompt;
+        this.determinePrompt = determinePrompt
+            ?? ((IEnumerable<IMessage> messages) => "Please give feedback: Press enter or type 'exit' to stop the conversation.");
         this.isTermination = isTermination ?? DefaultIsTermination;
         this.exitKeyword = exitKeyword;
         this.mode = mode;
@@ -50,7 +50,7 @@ public class HumanInputMiddleware : IMiddleware
         }
 
         // if the mode is always, or auto but message was not a termination message, then prompt the user for input
-        this.writeLine(context.Messages?.Last().FormatMessage() ?? prompt);
+        this.writeLine(determinePrompt(context.Messages));
         var input = getInput();
         if (input == exitKeyword)
         {
@@ -72,6 +72,6 @@ public class HumanInputMiddleware : IMiddleware
 
     private void WriteLine(string message)
     {
-        Console.WriteLine(message);
+        Console.Out.WriteColouredLine(ConsoleColor.White, message);
     }
 }

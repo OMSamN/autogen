@@ -158,7 +158,7 @@ public class MiddlewareAgentCodeSnippet
         -- END OF ORIGINAL MESSAGE --
         
         Reply again with json format.";
-                    reply = await agent.SendAsync(reviewPrompt, messages, ct);
+                    reply = await agent.SendAsync(reviewPrompt, messages, ct: ct);
                 }
             }
 

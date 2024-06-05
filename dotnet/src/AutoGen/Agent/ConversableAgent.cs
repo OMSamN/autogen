@@ -34,6 +34,7 @@ public class ConversableAgent : IAgent
     private readonly IAgent? innerAgent;
     private readonly string? defaultReply;
     private readonly HumanInputMode humanInputMode;
+    private readonly Func<IEnumerable<IMessage>, string>? determineHumanInputPrompt;
     private readonly IDictionary<string, Func<string, Task<string>>>? functionMap;
     private readonly string systemMessage;
     private readonly IEnumerable<FunctionContract>? functions;
@@ -63,6 +64,7 @@ public class ConversableAgent : IAgent
         ConversableAgentConfig? llmConfig = null,
         Func<IEnumerable<IMessage>, CancellationToken, Task<bool>>? isTermination = null,
         HumanInputMode humanInputMode = HumanInputMode.AUTO,
+        Func<IEnumerable<IMessage>, string>? determineHumanInputPrompt = null,
         IDictionary<FunctionContract, Func<string, Task<string>>>? functionMap = null,
         string? defaultReply = null
     )
@@ -72,6 +74,7 @@ public class ConversableAgent : IAgent
         this.functionMap = functionMap?.ToDictionary(x => x.Key.Name!, x => x.Value);
         this.functions = functionMap?.Keys;
         this.humanInputMode = humanInputMode;
+        this.determineHumanInputPrompt = determineHumanInputPrompt;
         this.IsTermination = isTermination;
         this.systemMessage = systemMessage;
         this.innerAgent = llmConfig?.ConfigList != null ? this.CreateInnerAgentFromConfigList(llmConfig) : null;
@@ -171,7 +174,7 @@ public class ConversableAgent : IAgent
         }
 
         // process human input
-        var humanInputMiddleware = new HumanInputMiddleware(mode: this.humanInputMode, isTermination: this.IsTermination);
+        var humanInputMiddleware = new HumanInputMiddleware(mode: this.humanInputMode, determinePrompt: determineHumanInputPrompt, isTermination: this.IsTermination);
         agent.Use(humanInputMiddleware);
 
         // process function call

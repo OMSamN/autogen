@@ -16,6 +16,7 @@ public class GroupChat : IGroupChat
     private List<IAgent> agents = new List<IAgent>();
     private IEnumerable<IMessage> initializeMessages = new List<IMessage>();
     private Graph? workflow = null;
+    private readonly bool writeConversationToConsole;
 
     public IEnumerable<IMessage>? Messages { get; private set; }
 
@@ -30,12 +31,14 @@ public class GroupChat : IGroupChat
         IEnumerable<IAgent> members,
         IAgent? admin = null,
         IEnumerable<IMessage>? initializeMessages = null,
-        Graph? workflow = null)
+        Graph? workflow = null,
+        bool writeConversationToConsole = false)
     {
         this.admin = admin;
         this.agents = members.ToList();
         this.initializeMessages = initializeMessages ?? new List<IMessage>();
         this.workflow = workflow;
+        this.writeConversationToConsole = writeConversationToConsole;
 
         this.Validation();
     }
@@ -59,7 +62,10 @@ public class GroupChat : IGroupChat
         // check if the agents in that workflow are in the group chat
         if (this.workflow != null)
         {
-            var agentNamesInWorkflow = this.workflow.Transitions.Select(x => x.From.Name!).Concat(this.workflow.Transitions.Select(x => x.To.Name!)).Distinct();
+            var agentNamesInWorkflow = this
+                .workflow.Transitions.Select(x => x.From.Name!)
+                .Concat(this.workflow.Transitions.Select(x => x.To.Name!))
+                .Distinct();
             if (agentNamesInWorkflow.Any(x => !this.agents.Select(a => a.Name).Contains(x)))
             {
                 throw new Exception("All agents in the workflow must be in the group chat.");
@@ -84,19 +90,21 @@ public class GroupChat : IGroupChat
     /// <returns>next speaker.</returns>
     public async Task<IAgent?> SelectNextSpeakerAsync(IAgent currentSpeaker, IEnumerable<IMessage> conversationHistory)
     {
-        var agentNames = this.agents.Select(x => x.Name).ToList();
+        var availableAgents = this.agents.ToList();
         if (this.workflow != null)
         {
             var nextAvailableAgents = await this.workflow.TransitToNextAvailableAgentsAsync(currentSpeaker, conversationHistory);
-            agentNames = nextAvailableAgents.Select(x => x.Name).ToList();
-            if (agentNames.Count == 0)
+            availableAgents = availableAgents
+                .Where(x => nextAvailableAgents.Any(y => y.Name == x.Name))
+                .ToList();
+            if (availableAgents.Count == 0)
             {
                 throw new Exception("No next available agents found in the current workflow");
             }
 
-            if (agentNames.Count == 1)
+            if (availableAgents.Count == 1)
             {
-                return this.agents.FirstOrDefault(x => x.Name == agentNames.First());
+                return availableAgents.FirstOrDefault();
             }
         }
 
@@ -107,16 +115,18 @@ public class GroupChat : IGroupChat
 
         var systemMessage = new TextMessage(Role.System,
             content: $@"You are in a role play game. Carefully read the conversation history and carry on the conversation.
-The available roles are:
-{string.Join(",", agentNames)}
+The available roles are: {string.Join(", ", availableAgents.Select(x => x.Name))}.
 
 Each message will start with 'From name:', e.g:
-From {agentNames.First()}:
-//your message//.
+```
+From {availableAgents.First().Name}:
+Message content
+```
 
-Your response should similarly identify the the next role to speak, and what they say next.
+Your response should similarly identify the the next role to speak and what they say next.
 
-If the role play scenario is complete, your reply should include the text: {GroupChatExtension.TERMINATE}.");
+You may only select from among the available roles, you may not select other roles in the conversation history that are not available now.
+If you feel the role play scenario is complete, your reply should include the text: {GroupChatExtension.TERMINATE}.");
 
         var conv = this.ProcessConversationsForRolePlay(this.initializeMessages, conversationHistory);
 
@@ -127,7 +137,7 @@ If the role play scenario is complete, your reply should include the text: {Grou
         {
             try
             {
-                var nextSpeaker = await TryRolePlayNextAgentAsync(admin, this.agents, messages);
+                var nextSpeaker = await TryRolePlayNextAgentAsync(admin, availableAgents, messages);
                 if (nextSpeaker != null)
                 {
                     return nextSpeaker;
@@ -137,9 +147,10 @@ If the role play scenario is complete, your reply should include the text: {Grou
             {
                 return null;
             }
-            catch (InvalidOperationException) when (remainingAttempts > 1)
+            catch (InvalidOperationException ex) when (remainingAttempts > 1)
             {
                 //Try again
+                Console.Out.WriteColouredLine(ConsoleColor.Red, $"Failed to select the next speaker: {ex.Message}");
             }
         } while (--remainingAttempts > 0);
 
@@ -161,6 +172,7 @@ If the role play scenario is complete, your reply should include the text: {Grou
                 StopSequence = [":"],
                 Functions = [],
             });
+        Console.Out.WriteColouredLine(ConsoleColor.DarkBlue, response.FormatMessage());
 
         if (response?.IsGroupChatTerminateMessage() ?? false)
         {
@@ -175,8 +187,9 @@ If the role play scenario is complete, your reply should include the text: {Grou
         }
 
         return availableAgents.FirstOrDefault(x =>
-                x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase)
-            ) ?? throw new InvalidOperationException($"No member of the chat named {name}.");
+                x.Name.Equals(name, StringComparison.CurrentCultureIgnoreCase))
+            ?? throw new InvalidOperationException(
+                $"No available member of the chat named {name}. Valid choices are: {string.Join(", ", availableAgents.Select(x => x.Name))}");
     }
 
     /// <inheritdoc />
@@ -197,7 +210,7 @@ If the role play scenario is complete, your reply should include the text: {Grou
         }
 
         var lastSpeakerName = conversationHistory.Last()?.From;
-        var lastSpeaker = lastSpeakerName switch
+        IAgent lastSpeaker = lastSpeakerName switch
         {
             null => this.agents.First(),
             _ => this.agents.FirstOrDefault(x => x.Name == lastSpeakerName) ?? throw new Exception($"The agent '{lastSpeakerName}' is not in the group chat"),
@@ -210,9 +223,11 @@ If the role play scenario is complete, your reply should include the text: {Grou
             try
             {
                 var currentSpeaker = await this.SelectNextSpeakerAsync(lastSpeaker, conversationHistory);
+                Console.Out.WriteColouredLine(ConsoleColor.DarkGreen, $"Transition {lastSpeaker.Name} to {currentSpeaker?.Name ?? "END OF CHAT"}...");
                 if (currentSpeaker == null)
                 {
-                    // if no next speaker was identified, terminate the conversation
+                    // if no next speaker was identified, terminate the conversation, reflecting this the conversation history.
+                    conversationHistory.Add(new TextMessage(Role.Assistant, GroupChatExtension.TERMINATE, from: this.admin?.Name));
                     break;
                 }
 
@@ -226,9 +241,12 @@ If the role play scenario is complete, your reply should include the text: {Grou
                         result = await currentSpeaker.GenerateReplyAsync(processedConversation, cancellationToken: ct);
                     }
                     catch (Exception ex)
-                        when (ex.GetType().FullName == "Azure.RequestFailedException" && --remainingRequestFailedExceptions > 0)
+                        when (ex.GetType().FullName == "Azure.RequestFailedException" && remainingRequestFailedExceptions-- > 0)
                     {
                         //Try again
+                        var wait = TimeSpan.FromSeconds(1);
+                        Console.Out.WriteColouredLine(ConsoleColor.Red, $"Got \"Azure.RequestFailedException\". Waiting {wait} before reattempting...");
+                        await Task.Delay(wait);
                     }
                 } while (result == null);
 
@@ -243,6 +261,10 @@ If the role play scenario is complete, your reply should include the text: {Grou
             }
 
             conversationHistory.Add(result);
+            if (writeConversationToConsole)
+            {
+                Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, result.FormatMessage());
+            }
 
             // if message is terminate message, then terminate the conversation
             if (result?.IsGroupChatTerminateMessage() ?? false)

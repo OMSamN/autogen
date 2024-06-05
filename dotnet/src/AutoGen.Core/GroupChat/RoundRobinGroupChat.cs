@@ -29,13 +29,16 @@ public class RoundRobinGroupChat : IGroupChat
 {
     private readonly List<IAgent> agents = new List<IAgent>();
     private readonly List<IMessage> initializeMessages = new List<IMessage>();
+    private readonly bool writeConversationToConsole;
 
     public RoundRobinGroupChat(
         IEnumerable<IAgent> agents,
-        List<IMessage>? initializeMessages = null)
+        List<IMessage>? initializeMessages = null,
+        bool writeConversationToConsole = false)
     {
         this.agents.AddRange(agents);
         this.initializeMessages = initializeMessages ?? new List<IMessage>();
+        this.writeConversationToConsole = writeConversationToConsole;
     }
 
     /// <inheritdoc />
@@ -57,7 +60,7 @@ public class RoundRobinGroupChat : IGroupChat
 
         var lastSpeakerName = conversationHistory.Last()?.From;
         var groupChatManagers = this.agents.OfType<GroupChatManager>();
-        var lastSpeaker = lastSpeakerName switch
+        IAgent lastSpeaker = lastSpeakerName switch
         {
             null => this.agents.First(),
             _
@@ -71,10 +74,16 @@ public class RoundRobinGroupChat : IGroupChat
         int round = 0;
         while (round < maxRound)
         {
-            var currentSpeaker = this.SelectNextSpeaker(lastSpeaker);
+            IAgent currentSpeaker = this.SelectNextSpeaker(lastSpeaker);
+            Console.Out.WriteColouredLine(ConsoleColor.DarkGreen,
+                $"Transition {(groupChatManagers.Contains(lastSpeaker) ? "GroupChat" : lastSpeaker.Name)} to {(groupChatManagers.Contains(currentSpeaker) ? "GroupChat" : currentSpeaker.Name)}...");
             var processedConversation = this.ProcessConversationForAgent(this.initializeMessages, conversationHistory);
             var result = await currentSpeaker.GenerateReplyAsync(processedConversation) ?? throw new Exception("No result is returned.");
             conversationHistory.Add(result);
+            if (writeConversationToConsole)
+            {
+                Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, result.FormatMessage());
+            }
 
             // if message is terminate message, then terminate the conversation
             if (result?.IsGroupChatTerminateMessage() ?? false)

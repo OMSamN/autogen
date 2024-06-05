@@ -50,7 +50,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         var lastMessage = context.Messages.Last();
         if (lastMessage is ToolCallMessage toolCallMessage)
         {
-            return await this.InvokeToolCallMessagesBeforeInvokingAgentAsync(toolCallMessage, agent);
+            return await this.InvokeToolCallMessagesBeforeInvokingAgentAsync(toolCallMessage, agent, context.Messages, cancellationToken);
         }
 
         // combine functions
@@ -78,7 +78,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         var lastMessage = context.Messages.Last();
         if (lastMessage is ToolCallMessage toolCallMessage)
         {
-            yield return await this.InvokeToolCallMessagesBeforeInvokingAgentAsync(toolCallMessage, agent);
+            yield return await this.InvokeToolCallMessagesBeforeInvokingAgentAsync(toolCallMessage, agent, context.Messages, cancellationToken);
         }
 
         // combine functions
@@ -116,7 +116,11 @@ public class FunctionCallMiddleware : IStreamingMiddleware
         }
     }
 
-    private async Task<ToolCallResultMessage> InvokeToolCallMessagesBeforeInvokingAgentAsync(ToolCallMessage toolCallMessage, IAgent agent)
+    private async Task<IMessage> InvokeToolCallMessagesBeforeInvokingAgentAsync(
+        ToolCallMessage toolCallMessage,
+        IAgent agent,
+        IEnumerable<IMessage> messages,
+        CancellationToken cancellationToken)
     {
         var toolCallResult = new List<ToolCall>();
         var toolCalls = toolCallMessage.ToolCalls;
@@ -131,9 +135,14 @@ public class FunctionCallMiddleware : IStreamingMiddleware
             }
             else if (this.functionMap is not null)
             {
-                var errorMessage = $"Function {functionName} is not available. Available functions are: {string.Join(", ", this.functionMap.Select(f => f.Key))}";
-
-                toolCallResult.Add(new ToolCall(functionName, functionArguments, errorMessage) { ToolCallId = toolCall.ToolCallId });
+                var originalContent = toolCallMessage.GetContent();
+                var errorMessage =
+                    $"Function {functionName} is not available. Available functions are: {string.Join(", ", this.functionMap.Select(f => f.Key))}";
+                var prompt =
+                    $@"{errorMessage}
+## Original Content
+{originalContent}";
+                return await agent.SendAsync(prompt, messages, ct: cancellationToken);
             }
             else
             {
@@ -145,13 +154,13 @@ public class FunctionCallMiddleware : IStreamingMiddleware
     }
 
     private async Task<IMessage> InvokeToolCallMessagesAfterInvokingAgentAsync(
-        ToolCallMessage toolCallMsg,
+        ToolCallMessage toolCallMessage,
         IAgent agent,
         IEnumerable<IMessage> messages,
         CancellationToken cancellationToken)
     {
         var toolCallResult = new List<ToolCall>();
-        var toolCallsReply = toolCallMsg.ToolCalls;
+        var toolCallsReply = toolCallMessage.ToolCalls;
         foreach (var toolCall in toolCallsReply)
         {
             var functionName = toolCall.FunctionName;
@@ -165,7 +174,7 @@ public class FunctionCallMiddleware : IStreamingMiddleware
                 }
                 catch (Exception ex)
                 {
-                    var originalContent = toolCallMsg.GetContent();
+                    var originalContent = toolCallMessage.GetContent();
                     var prompt =
                         $@"{string.Join(
                             Environment.NewLine,
@@ -179,29 +188,30 @@ public class FunctionCallMiddleware : IStreamingMiddleware
 ## Original Content
 {originalContent}";
 
-                    return await agent.SendAsync(prompt, messages, cancellationToken);
+                    return await agent.SendAsync(prompt, messages, ct: cancellationToken);
                 }
             }
             else if (this.functionMap is not null)
             {
-                var originalContent = toolCallMsg.GetContent();
+                var originalContent = toolCallMessage.GetContent();
                 var errorMessage =
                     $"Function {functionName} is not available. Available functions are: {string.Join(", ", this.functionMap.Select(f => f.Key))}";
                 var prompt = $@"{errorMessage}
 ## Original Content
 {originalContent}";
-                return await agent.SendAsync(prompt, messages, cancellationToken);
+                return await agent.SendAsync(prompt, messages, ct: cancellationToken);
             }
         }
 
         if (toolCallResult.Count > 0)
         {
             var toolCallResultMessage = new ToolCallResultMessage(toolCallResult, from: agent.Name);
-            return new ToolCallAggregateMessage(toolCallMsg, toolCallResultMessage, from: agent.Name);
+            return new ToolCallAggregateMessage(toolCallMessage, toolCallResultMessage, from: agent.Name
+            );
         }
         else
         {
-            return toolCallMsg;
+            return toolCallMessage;
         }
     }
 }

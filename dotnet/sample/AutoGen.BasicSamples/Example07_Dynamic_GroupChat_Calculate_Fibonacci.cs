@@ -203,10 +203,10 @@ public partial class Example07_Dynamic_GroupChat_Calculate_Fibonacci
                         var originalContent = reply.GetContent();
                         var prompt = $@"Please convert the content to ReviewCodeBlock function arguments.
 
-        ## Original Content
-        {originalContent}";
+## Original Content
+{originalContent}";
 
-                        reply = await innerAgent.SendAsync(prompt, msgs, ct);
+                        reply = await innerAgent.SendAsync(prompt, msgs, ct: ct);
                     }
                 }
 

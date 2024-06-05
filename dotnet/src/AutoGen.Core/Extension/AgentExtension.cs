@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft Corporation. All rights reserved.
 // AgentExtension.cs
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,6 +22,7 @@ public static class AgentExtension
         this IAgent agent,
         IMessage? message = null,
         IEnumerable<IMessage>? chatHistory = null,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         var messages = new List<IMessage>();
@@ -33,8 +35,11 @@ public static class AgentExtension
         if (message != null)
         {
             messages.Add(message);
+            if (writeConversationToConsole)
+            {
+                Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, message.FormatMessage());
+            }
         }
-
 
         var result = await agent.GenerateReplyAsync(messages, cancellationToken: ct);
 
@@ -52,11 +57,12 @@ public static class AgentExtension
         this IAgent agent,
         string message,
         IEnumerable<IMessage>? chatHistory = null,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         var msg = new TextMessage(Role.User, message);
 
-        return await agent.SendAsync(msg, chatHistory, ct);
+        return await agent.SendAsync(msg, chatHistory, writeConversationToConsole, ct);
     }
 
     /// <summary>
@@ -72,6 +78,7 @@ public static class AgentExtension
         IAgent receiver,
         IEnumerable<IMessage> chatHistory,
         int maxRound = 10,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         if (receiver is GroupChatManager manager)
@@ -86,7 +93,8 @@ public static class AgentExtension
             {
                 agent,
                 receiver,
-            });
+            },
+            writeConversationToConsole: writeConversationToConsole);
 
         return await groupChat.CallAsync(chatHistory, maxRound, ct: ct);
     }
@@ -106,6 +114,7 @@ public static class AgentExtension
         string message,
         IEnumerable<IMessage>? chatHistory = null,
         int maxRound = 10,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         var msg = new TextMessage(Role.User, message)
@@ -115,8 +124,12 @@ public static class AgentExtension
 
         chatHistory = chatHistory ?? new List<IMessage>();
         chatHistory = chatHistory.Append(msg);
+        if (writeConversationToConsole)
+        {
+            Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, msg.FormatMessage());
+        }
 
-        return await agent.SendAsync(receiver, chatHistory, maxRound, ct);
+        return await agent.SendAsync(receiver, chatHistory, maxRound, writeConversationToConsole, ct);
     }
 
     /// <summary>
@@ -131,6 +144,7 @@ public static class AgentExtension
         IAgent receiver,
         string? message = null,
         int maxRound = 10,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         var chatHistory = new List<IMessage>();
@@ -142,9 +156,13 @@ public static class AgentExtension
             };
 
             chatHistory.Add(msg);
+            if (writeConversationToConsole)
+            {
+                Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, msg.FormatMessage());
+            }
         }
 
-        return await agent.SendAsync(receiver, chatHistory, maxRound, ct);
+        return await agent.SendAsync(receiver, chatHistory, maxRound, writeConversationToConsole, ct);
     }
 
     public static async Task<IEnumerable<IMessage>> SendMessageToGroupAsync(
@@ -153,11 +171,16 @@ public static class AgentExtension
         string msg,
         IEnumerable<IMessage>? chatHistory = null,
         int maxRound = 10,
+        bool writeConversationToConsole = false,
         CancellationToken ct = default)
     {
         var chatMessage = new TextMessage(Role.Assistant, msg, from: agent.Name);
         chatHistory = chatHistory ?? Enumerable.Empty<IMessage>();
         chatHistory = chatHistory.Append(chatMessage);
+        if (writeConversationToConsole)
+        {
+            Console.Out.WriteColouredLine(ConsoleColor.DarkYellow, chatMessage.FormatMessage());
+        }
 
         return await agent.SendMessageToGroupAsync(groupChat, chatHistory, maxRound, ct);
     }
