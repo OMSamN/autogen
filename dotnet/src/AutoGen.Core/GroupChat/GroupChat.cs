@@ -244,7 +244,7 @@ If you feel the role play scenario is complete, your reply should include the te
                         when (ex.GetType().FullName == "Azure.RequestFailedException" && remainingRequestFailedExceptions-- > 0)
                     {
                         //Try again
-                        var wait = TimeSpan.FromSeconds(1);
+                        var wait = TimeSpan.FromSeconds(5);
                         Console.Out.WriteColouredLine(ConsoleColor.Red, $"Got \"Azure.RequestFailedException\". Waiting {wait} before reattempting...");
                         await Task.Delay(wait);
                     }

@@ -88,7 +88,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         var coder = CreateCoderAgentAsync();
         var runner = CreateRunnerAgentAsync(service, coder);
 
-        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, groupAdmin, userProxy, coder, runner);
+        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, _llmConfig, groupAdmin, userProxy, coder, runner);
 
         // task 1: Add 5 and 7
         IEnumerable<IMessage>? conversationHistory = null;
@@ -104,6 +104,12 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         conversationHistory.Last().IsGroupChatTerminateMessage().Should().BeTrue();
 
         // task 2: retrieve the most recent PR from mlnet and save it in result.txt
+        var openAIKey =
+            Environment.GetEnvironmentVariable("OPENAI_API_KEY", EnvironmentVariableTarget.User)
+            ?? throw new InvalidCastException("Please set OPENAI_API_KEY environment variable.");
+        var llmConfig = new OpenAIConfig(openAIKey, OpenAiModelId.Gpt4o_May13);
+        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, llmConfig, groupAdmin, userProxy, coder, runner);
+
         conversationHistory = await userProxy.InitiateChatAsync(
             groupChatManager,
             $"Retrieve the most recent PR from mlnet and save it in {result.Name}",
@@ -202,16 +208,17 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
     private GroupChatManager SetupWorkflowAndGroupChat(
         bool writeConversationToConsole,
+        ILLMConfig defaultAgentConfig,
         IAgent groupAdmin,
         IAgent user,
         IAgent coder,
         IAgent runner)
     {
-        var admin = CreateAdminAsync();
+        var admin = CreateAdminAsync(defaultAgentConfig);
         var reviewApprovedMessage =
             $"The code looks good, please ask {runner.Name} to run the code for you.";
         string reviewRejectedMessage = "There are some code review comments, please fix these:";
-        var reviewer = CreateReviewerAgentAsync(reviewApprovedMessage, reviewRejectedMessage);
+        var reviewer = CreateReviewerAgentAsync(defaultAgentConfig, reviewApprovedMessage, reviewRejectedMessage);
 
         var adminToCoderTransition = Transition.Create(admin, coder);
         var adminToRunnerTransition = Transition.Create(admin, runner);
@@ -354,7 +361,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         return new GroupChatManager(groupChat);
     }
 
-    private IAgent CreateAdminAsync()
+    private IAgent CreateAdminAsync(ILLMConfig llmConfig)
     {
         // Create admin agent
         return new AssistantAgent(
@@ -404,7 +411,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
             Your reply must contain one of [task|ask|summary] to indicate the type of your message.
             """,
-            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [_llmConfig], });
+            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [llmConfig], });
     }
 
     private IAgent CreateCoderAgentAsync()
@@ -477,6 +484,7 @@ Here's some external information:
     }
 
     private IAgent CreateReviewerAgentAsync(
+        ILLMConfig llmConfig,
         string approvedMessage = "The code looks good, please ask runner to run the code for you.",
         string rejectedMessage = "There are some code review comments, please fix these:")
     {
@@ -517,7 +525,7 @@ Here's some external information:
             ```
 
             """,
-            config: _llmConfig,
+            config: llmConfig,
             temperature: 0f,
             functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>()
             {
