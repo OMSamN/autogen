@@ -92,13 +92,24 @@ public class ConversableAgent : IAgent
         {
             IAgent nextAgent = llmConfig switch
             {
-                AzureOpenAIConfig azureConfig => new GPTAgent(this.Name, this.systemMessage, azureConfig, temperature: config.Temperature ?? 0),
-                OpenAIConfig openAIConfig => new GPTAgent(this.Name, this.systemMessage, openAIConfig, temperature: config.Temperature ?? 0),
+                AzureOpenAIConfig azureConfig => new GPTAgent(
+                    this.Name,
+                    this.systemMessage,
+                    azureConfig,
+                    temperature: config.Temperature ?? 0,
+                    maxTokens: config.MaxOutputTokens),
+                OpenAIConfig openAIConfig => new GPTAgent(
+                    this.Name,
+                    this.systemMessage,
+                    openAIConfig,
+                    temperature: config.Temperature ?? 0,
+                    maxTokens: config.MaxOutputTokens),
                 LMStudioConfig lmStudioConfig => new LMStudioAgent(
                     name: this.Name,
                     config: lmStudioConfig,
                     systemMessage: this.systemMessage,
-                    temperature: config.Temperature ?? 0),
+                    temperature: config.Temperature ?? 0,
+                    maxTokens: config.MaxOutputTokens),
                 _ => throw new ArgumentException($"Unsupported config type {llmConfig.GetType()}"),
             };
 

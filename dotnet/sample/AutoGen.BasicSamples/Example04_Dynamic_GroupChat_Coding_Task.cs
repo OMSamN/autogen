@@ -36,8 +36,11 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         }
 
         await service.StartAsync(workDir, default);
-
         var writeConversationToConsole = true;
+        var maxOutputTokens = 1024;
+        //maxTokens <= 4096, and input_tokens + max_tokens <= 16,385 (i.e. the context window token size for OpenAiModelId.Gpt3_5T)
+        //According to https://platform.openai.com/docs/models/gpt-4-turbo-and-gpt-4 all these models have a max output tokens of 4096.
+        //GPT4 have a larger context window, but the output tokens remain the same.
         var userProxy = new UserProxyAgent(
             name: "user",
             defaultReply: GroupChatExtension.TERMINATE,
@@ -53,6 +56,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             name: "groupAdmin",
             systemMessage: "You are group admin, terminate the group chat once task is completed by saying [TERMINATE] plus the final answer",
             temperature: 0f,
+            maxTokens: maxOutputTokens,
             config: _llmConfig)
             .RegisterMiddleware(
                 async (msgs, option, agent, ct) =>
@@ -85,10 +89,10 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
                     return reply;
                 });
 
-        var coder = CreateCoderAgentAsync();
+        var coder = CreateCoderAgentAsync(maxOutputTokens);
         var runner = CreateRunnerAgentAsync(service, coder);
 
-        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, _llmConfig, groupAdmin, userProxy, coder, runner);
+        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, maxOutputTokens, _llmConfig, groupAdmin, userProxy, coder, runner);
 
         // task 1: Add 5 and 7
         IEnumerable<IMessage>? conversationHistory = null;
@@ -108,7 +112,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
             Environment.GetEnvironmentVariable("OPENAI_API_KEY", EnvironmentVariableTarget.User)
             ?? throw new InvalidCastException("Please set OPENAI_API_KEY environment variable.");
         var llmConfig = new OpenAIConfig(openAIKey, OpenAiModelId.Gpt4o_May13);
-        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, llmConfig, groupAdmin, userProxy, coder, runner);
+        groupChatManager = SetupWorkflowAndGroupChat(writeConversationToConsole, maxOutputTokens, llmConfig, groupAdmin, userProxy, coder, runner);
 
         conversationHistory = await userProxy.InitiateChatAsync(
             groupChatManager,
@@ -208,17 +212,18 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
     private GroupChatManager SetupWorkflowAndGroupChat(
         bool writeConversationToConsole,
+        int maxOutputTokens,
         ILLMConfig defaultAgentConfig,
         IAgent groupAdmin,
         IAgent user,
         IAgent coder,
         IAgent runner)
     {
-        var admin = CreateAdminAsync(defaultAgentConfig);
+        var admin = CreateAdminAsync(defaultAgentConfig, maxOutputTokens);
         var reviewApprovedMessage =
             $"The code looks good, please ask {runner.Name} to run the code for you.";
         string reviewRejectedMessage = "There are some code review comments, please fix these:";
-        var reviewer = CreateReviewerAgentAsync(defaultAgentConfig, reviewApprovedMessage, reviewRejectedMessage);
+        var reviewer = CreateReviewerAgentAsync(defaultAgentConfig, maxOutputTokens, reviewApprovedMessage, reviewRejectedMessage);
 
         var adminToCoderTransition = Transition.Create(admin, coder);
         var adminToRunnerTransition = Transition.Create(admin, runner);
@@ -361,7 +366,7 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
         return new GroupChatManager(groupChat);
     }
 
-    private IAgent CreateAdminAsync(ILLMConfig llmConfig)
+    private IAgent CreateAdminAsync(ILLMConfig llmConfig, int maxOutputTokens)
     {
         // Create admin agent
         return new AssistantAgent(
@@ -411,10 +416,10 @@ public partial class Example04_Dynamic_GroupChat_Coding_Task
 
             Your reply must contain one of [task|ask|summary] to indicate the type of your message.
             """,
-            llmConfig: new ConversableAgentConfig { Temperature = 0, ConfigList = [llmConfig], });
+            llmConfig: new ConversableAgentConfig { ConfigList = [llmConfig], MaxOutputTokens = maxOutputTokens, Temperature = 0, });
     }
 
-    private IAgent CreateCoderAgentAsync()
+    private IAgent CreateCoderAgentAsync(int maxOutputTokens)
     {
         // create coder agent
         // The coder agent is a composite agent that contains dotnet coder, code reviewer and NuGet agent.
@@ -446,6 +451,7 @@ Here's some external information:
 ",
             config: _llmConfig,
             temperature: 0.4f,
+            maxTokens: maxOutputTokens,
             functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>
             {
                 { this.AddFunctionContract, this.AddWrapper }
@@ -485,6 +491,7 @@ Here's some external information:
 
     private IAgent CreateReviewerAgentAsync(
         ILLMConfig llmConfig,
+        int maxOutputTokens,
         string approvedMessage = "The code looks good, please ask runner to run the code for you.",
         string rejectedMessage = "There are some code review comments, please fix these:")
     {
@@ -527,6 +534,7 @@ Here's some external information:
             """,
             config: llmConfig,
             temperature: 0f,
+            maxTokens: maxOutputTokens,
             functionMap: new Dictionary<FunctionContract, Func<string, Task<string>>>()
             {
                 { this.ReviewCodeBlockFunctionContract, this.ReviewCodeBlockWrapper },
@@ -537,7 +545,7 @@ Here's some external information:
                 var reply = await innerAgent.GenerateReplyAsync(msgs, option, ct);
                 while (maxRetry-- > 0)
                 {
-                    if (reply.GetToolCalls() is var toolCalls && toolCalls.Count == 1 && toolCalls[0].FunctionName == nameof(ReviewCodeBlock))
+                    if (reply.GetToolCalls() is { } toolCalls && toolCalls.Count == 1 && toolCalls[0].FunctionName == nameof(ReviewCodeBlock))
                     {
                         var toolCallResult = reply.GetContent();
                         var reviewResultObj = System.Text.Json.JsonSerializer.Deserialize<CodeReviewResult>(toolCallResult);
