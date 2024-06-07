@@ -240,13 +240,19 @@ If you feel the role play scenario is complete, your reply should include the te
                     {
                         result = await currentSpeaker.GenerateReplyAsync(processedConversation, cancellationToken: ct);
                     }
+                    catch (RateLimitExceededException ex)
+                    {
+                        var wait = ex.Info.TimeUntilReset ?? TimeSpan.FromSeconds(5);
+                        Console.Out.WriteColouredLine(ConsoleColor.Red, $"Waiting {wait} due to {ex.Message}");
+                        await Task.Delay(wait, ct);
+                    }
                     catch (Exception ex)
                         when (ex.GetType().FullName == "Azure.RequestFailedException" && remainingRequestFailedExceptions-- > 0)
                     {
                         //Try again
                         var wait = TimeSpan.FromSeconds(5);
                         Console.Out.WriteColouredLine(ConsoleColor.Red, $"Got \"Azure.RequestFailedException\". Waiting {wait} before reattempting...");
-                        await Task.Delay(wait);
+                        await Task.Delay(wait, ct);
                     }
                 } while (result == null);
 
